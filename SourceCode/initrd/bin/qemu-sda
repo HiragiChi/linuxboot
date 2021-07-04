@@ -1,0 +1,5 @@
+#!/bin/sh
+
+insmod /lib/modules/libata.ko
+insmod /lib/modules/libahci.ko
+insmod /lib/modules/ahci.ko

@@ -1,0 +1,113 @@
+#!/bin/sh
+# Boot from a local disk installation
+
+. /etc/functions
+. /tmp/config
+
+export username=''
+export password=''
+ 
+getUsername() {
+    read -p "username(default: `echo root`): " username
+ 
+    if test -z "$username"; then
+        username=$USER
+    fi
+    export username
+}
+ 
+getPassword() {
+    read -s -p "password: " password
+    export password
+	echo
+}
+
+mount_boot()
+{
+	# Mount local disk if it is not already mounted
+	if ! grep -q /boot /proc/mounts ; then
+		mount -o ro /boot \
+			|| recovery "Unable to mount /boot"
+	fi
+}
+
+
+# Confirm we have a good TOTP unseal and ask the user for next choice
+while true; do
+	echo '*****' 'Choose an option:'
+	echo "y) Default boot"
+	# echo "n) TOTP does not match"
+	# echo "u) USB boot"
+	echo "m) Boot menu"
+	echo "r) Recovery boot"
+	echo "f) Security Kit"
+
+	if ! confirm_totp "Boot mode"; then
+		recovery 'Failed to unseal TOTP'
+	fi
+
+	if [ "$totp_confirm" = "f" ]; then
+		# login
+		echo Please login first!
+		getUsername
+		getPassword
+		if [ $password = "123456" ]
+		then 
+			echo Enter security kit...
+			sleep 3 
+			recovery "User requested security kit "
+		else
+			echo Login failed!
+			echo 
+			continue
+		fi
+	fi
+
+	if [ "$totp_confirm" = "r" ]; then
+		# login
+		echo Please login first!
+		getUsername
+		getPassword
+		if [ $password = "123456" ]
+		then 
+			# echo Enter security kit 
+			recovery "User requested recovery shell"
+		else
+			echo Login failed!
+			echo 
+			continue
+		fi
+		# recovery "User requested recovery shell"
+	fi
+
+	if [ "$totp_confirm" = "n" ]; then
+		echo ""
+		echo "To correct clock drift: 'date -s HH:MM:SS'"
+		echo "and save it to the RTC: 'hwclock -w'"
+		echo "then reboot and try again"
+		echo ""
+		recovery "TOTP mismatch"
+	fi
+
+	if [ "$totp_confirm" = "u" ]; then
+		exec /bin/usb-init
+		continue
+	fi
+
+	if [ "$totp_confirm" = "m" ]; then
+		# Try to select a kernel from the menu
+		mount_boot
+		kexec-select-boot -m -b /boot -c "grub.cfg"
+		continue
+	fi
+
+	if [ "$totp_confirm" = "y" -o -n "$totp_confirm" ]; then
+		# Try to boot the default
+		mount_boot
+		kexec-select-boot -b /boot -c "grub.cfg" \
+		|| recovery "Failed default boot"
+	fi
+
+done
+
+recovery "Something failed during boot"
